@@ -27,21 +27,31 @@ On terminals at least 80 columns wide, Bert appears as a bottom-right overlay. O
 
 Other terminals receive a small text fallback.
 
+## Installation
+
+Install directly from GitHub:
+
+```bash
+pi install git:github.com/mitchelkuijpers/pi-bert
+```
+
+Then restart Pi.
+
 ## Try it
 
-From this repository:
+From a local clone of this repository:
 
 ```bash
 pi -e .
 ```
 
-To install it from this local checkout:
+To install from a local checkout instead:
 
 ```bash
 pi install /absolute/path/to/pi-bert
 ```
 
-Restart Pi after installation. While developing an installed local package, use `/reload` after changing the extension.
+While developing an installed local package, use `/reload` after changing the extension.
 
 ## Commands
 
