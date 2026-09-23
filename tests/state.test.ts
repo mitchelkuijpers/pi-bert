@@ -123,3 +123,53 @@ test("setAnimationEnabled is a no-op when the value is unchanged", () => {
 	assert.equal(emits, 1);
 	animator.stop();
 });
+
+test("hidden Bert emits only on visibility changes, not ticks or lifecycle events", () => {
+	const animator = new BertAnimator();
+	let emits = 0;
+	animator.subscribe(() => emits++);
+	animator.startAgent(1_000);
+	assert.equal(emits, 1);
+
+	animator.setEnabled(false);
+	assert.equal(emits, 2); // clear the widget once
+	animator["tick"]();
+	animator.startTool("tool-1", "bash");
+	animator.finishTool("tool-1", true, 2_000);
+	animator.setWaiting(true);
+	animator.setCompacting(true);
+	animator.preview("done", 2_000);
+	animator["tick"]();
+	assert.equal(emits, 2);
+
+	animator.setEnabled(true);
+	assert.equal(emits, 3); // redraw once with the current state
+	assert.equal(animator.snapshot(2_000).mode, "done");
+	animator.stop();
+});
+
+test("hidden animation ticks do not advance the mouth, and resume with current state", () => {
+	for (const animationEnabled of [true, false]) {
+		const animator = new BertAnimator();
+		let emits = 0;
+		animator.subscribe(() => emits++);
+		animator.setAnimationEnabled(animationEnabled);
+		animator.startAgent(1_000);
+		animator.setEnabled(false);
+		const hiddenEmits = emits;
+		animator["tick"]();
+		animator["tick"]();
+		animator.setAnimationEnabled(!animationEnabled);
+		assert.equal(animator["mouthIndex"], 0);
+		assert.equal(emits, hiddenEmits);
+
+		animator.setEnabled(true);
+		assert.equal(emits, hiddenEmits + 1);
+		assert.equal(animator.snapshot(1_000).mode, "thinking");
+		animator.preview("error", 2_000);
+		animator.setEnabled(false);
+		animator.setEnabled(true);
+		assert.equal(animator.snapshot(2_000 + 5_000).mode, "thinking");
+		animator.stop();
+	}
+});

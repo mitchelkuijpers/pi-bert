@@ -152,7 +152,7 @@ export class BertAnimator {
 	setEnabled(enabled: boolean): void {
 		if (this.enabled === enabled) return;
 		this.enabled = enabled;
-		this.emit();
+		this.emit(true);
 	}
 
 	isAnimationEnabled(): boolean {
@@ -231,6 +231,7 @@ export class BertAnimator {
 	}
 
 	private tick(): void {
+		if (!this.enabled) return;
 		const visual = selectVisual(this.state, Date.now());
 		const modeChanged = visual.mode !== this.lastMode;
 		const animated = visual.animated && this.animationEnabled;
@@ -240,7 +241,8 @@ export class BertAnimator {
 		if (modeChanged || animated) this.emit();
 	}
 
-	private emit(): void {
+	private emit(force = false): void {
+		if (!this.enabled && !force) return;
 		const mode = selectVisual(this.state, Date.now()).mode;
 		if (mode !== this.lastMode) {
 			this.lastMode = mode;

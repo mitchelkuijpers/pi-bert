@@ -1,6 +1,6 @@
 # pi-bert
 
-An animated Bert companion for the [Pi coding agent](https://pi.dev). Bert stays visible in a medium-sized panel at the bottom-right of the terminal and reacts to Pi's lifecycle events.
+An animated Bert companion for the [Pi coding agent](https://pi.dev). Bert appears in a compact top-right panel and reacts to Pi's lifecycle events.
 
 ![Bert sprite sheet](bert-sprites.png)
 
@@ -17,7 +17,7 @@ An animated Bert companion for the [Pi coding agent](https://pi.dev). Bert stays
 | Waiting for a dialog response | Waits for you |
 | Compacting context | Tired compacting animation |
 
-On terminals at least 80 columns wide, Bert appears as a bottom-right overlay. On narrower terminals, he automatically moves to a right-aligned widget above the editor.
+Bert appears in a top-right overlay. Pi only allows switching between regular and fullscreen TUI modes when no overlays are registered, so `/bert off` removes Bert's overlay; use `/bert on` to restore him after switching.
 
 ## Requirements
 
@@ -57,8 +57,8 @@ While developing an installed local package, use `/reload` after changing the ex
 
 ```text
 /bert                       Show Bert's current state
-/bert on                    Show Bert
-/bert off                   Hide Bert
+/bert on                    Show Bert and restore his overlay
+/bert off                   Hide Bert and remove his overlay (allows TUI mode switching)
 /bert animate auto          Animate only in fullscreen mode (default)
 /bert animate on            Always animate the talking mouth
 /bert animate off           Never animate the talking mouth

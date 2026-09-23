@@ -17,7 +17,6 @@ const WIDGET_KEY = "pi-bert";
 const OVERLAY_WIDTH = 24;
 const IMAGE_WIDTH = 20;
 const IMAGE_HEIGHT = 7;
-const OVERLAY_BREAKPOINT = 80;
 const FRAME_DIMENSIONS = { widthPx: 320, heightPx: 204 };
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const FRAME_DIR = join(EXTENSION_DIR, "..", "assets", "frames");
@@ -75,7 +74,6 @@ class BertComponent implements Component {
 		private readonly theme: Theme,
 		private readonly animator: BertAnimator,
 		private readonly frames: FrameMap,
-		private readonly fallbackWidget: boolean,
 		private readonly shouldAnimate: () => boolean,
 	) {
 		this.unsubscribe = animator.subscribe(() => this.tui.requestRender());
@@ -84,20 +82,15 @@ class BertComponent implements Component {
 	render(width: number): string[] {
 		if (!this.animator.isEnabled()) return [];
 		// Sync per render: keeps the animator in the right mode across runtime
-		// fullscreen switches and widget/overlay recreation. Pi's main-screen
+		// fullscreen switches and widget recreation. Pi's main-screen
 		// renderer deletes the image data of every kitty id found in a changed
 		// line, so per-tick animation there means delete + re-upload at 7 Hz;
 		// in that renderer Bert only changes frames on actual state changes.
 		// setAnimationEnabled no-ops when the value is unchanged, so this does
 		// not cause render loops.
 		this.animator.setAnimationEnabled(this.shouldAnimate());
-		// The widget slot width is only a fraction of the terminal (other
-		// extensions share the row above the editor), so compare against the real
-		// terminal width: on wide terminals the top-right overlay shows Bert and
-		// the widget stays empty.
-		if (this.fallbackWidget && this.terminalWidth(width) >= OVERLAY_BREAKPOINT) return [];
-
 		const snapshot = this.animator.snapshot();
+		const panelWidth = Math.max(1, Math.min(OVERLAY_WIDTH, width));
 		const contentWidth = Math.max(1, Math.min(OVERLAY_WIDTH - 2, width));
 		let imageLines: string[];
 
@@ -123,16 +116,10 @@ class BertComponent implements Component {
 			imageLines = image.render(contentWidth);
 		}
 
-		const panelWidth = Math.min(OVERLAY_WIDTH, width);
-		const leftPad = this.fallbackWidget ? Math.max(0, width - panelWidth) : 1;
+		const leftPad = Math.max(0, width - panelWidth);
 		const paddedImage = imageLines.map((line) => `${" ".repeat(leftPad)}${line}`);
 		const caption = centerLine(this.theme.fg("muted", snapshot.caption), panelWidth);
-		return [...paddedImage, `${" ".repeat(this.fallbackWidget ? leftPad : 0)}${caption}`];
-	}
-
-	terminalWidth(fallback: number): number {
-		const columns = this.tui?.terminal?.columns;
-		return typeof columns === "number" && columns > 0 ? columns : fallback;
+		return [...paddedImage, `${" ".repeat(leftPad)}${caption}`];
 	}
 
 	invalidate(): void {
@@ -146,18 +133,39 @@ class BertComponent implements Component {
 
 export default function bertExtension(pi: ExtensionAPI): void {
 	let animator: BertAnimator | undefined;
+	let tui: TUI | undefined;
+	let theme: Theme | undefined;
+	let frames: FrameMap | undefined;
 	let overlayHandle: OverlayHandle | undefined;
 	let overlayComponent: BertComponent | undefined;
-	let tui: TUI | undefined;
 	let animateSetting: BertAnimateSetting = "auto";
 
 	const shouldAnimate = (): boolean =>
 		animateSetting === "on" || (animateSetting === "auto" && isAltScreenRenderer(tui));
 
+	const showBert = (): void => {
+		if (!animator?.isEnabled() || !tui || !theme || !frames || overlayHandle) return;
+		overlayComponent = new BertComponent(tui, theme, animator, frames, shouldAnimate);
+		overlayHandle = tui.showOverlay(overlayComponent, {
+			anchor: "top-right",
+			width: OVERLAY_WIDTH,
+			minWidth: OVERLAY_WIDTH,
+			maxHeight: 10,
+			margin: { right: 1, top: 1 },
+			nonCapturing: true,
+		});
+	};
+
+	const hideBert = (): void => {
+		overlayHandle?.hide();
+		overlayHandle = undefined;
+		overlayComponent?.dispose();
+		overlayComponent = undefined;
+	};
+
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
 
-		let frames: FrameMap;
 		try {
 			frames = loadFrames();
 		} catch (error) {
@@ -167,24 +175,12 @@ export default function bertExtension(pi: ExtensionAPI): void {
 
 		animator = new BertAnimator();
 
-		ctx.ui.setWidget(
-			WIDGET_KEY,
-			(componentTui, theme) => {
-				tui = componentTui;
-				overlayComponent = new BertComponent(componentTui, theme, animator!, frames, false, shouldAnimate);
-				overlayHandle = componentTui.showOverlay(overlayComponent, {
-					anchor: "top-right",
-					width: OVERLAY_WIDTH,
-					minWidth: OVERLAY_WIDTH,
-					maxHeight: 10,
-					margin: { right: 1, top: 1 },
-					visible: (terminalWidth) => terminalWidth >= OVERLAY_BREAKPOINT && (animator?.isEnabled() ?? false),
-					nonCapturing: true,
-				});
-				return new BertComponent(componentTui, theme, animator!, frames, true, shouldAnimate);
-			},
-			{ placement: "aboveEditor" },
-		);
+		ctx.ui.setWidget(WIDGET_KEY, (componentTui, componentTheme) => {
+			tui = componentTui;
+			theme = componentTheme;
+			showBert();
+			return { render: () => [], invalidate: () => {} };
+		});
 		animator.start();
 	});
 
@@ -201,10 +197,7 @@ export default function bertExtension(pi: ExtensionAPI): void {
 	pi.on("session_compact_failed", () => animator?.setCompacting(false));
 
 	pi.on("session_shutdown", (_event, ctx) => {
-		overlayHandle?.hide();
-		overlayHandle = undefined;
-		overlayComponent?.dispose();
-		overlayComponent = undefined;
+		hideBert();
 		ctx.ui.setWidget(WIDGET_KEY, undefined);
 		animator?.stop();
 		animator = undefined;
@@ -222,15 +215,13 @@ export default function bertExtension(pi: ExtensionAPI): void {
 			const [command = "status", requestedMode] = args.trim().toLowerCase().split(/\s+/);
 			if (command === "on") {
 				animator.setEnabled(true);
-				overlayHandle?.setHidden(false);
-				tui?.requestRender();
+				showBert();
 				ctx.ui.notify("Bert is visible.", "info");
 				return;
 			}
 			if (command === "off") {
 				animator.setEnabled(false);
-				overlayHandle?.setHidden(true);
-				tui?.requestRender();
+				hideBert();
 				ctx.ui.notify("Bert is hidden. Use /bert on to bring him back.", "info");
 				return;
 			}
