@@ -126,6 +126,7 @@ export class BertAnimator {
 	private mouthIndex = 0;
 	private lastMode?: BertMode;
 	private enabled = true;
+	private animationEnabled = true;
 
 	start(): void {
 		if (this.interval) return;
@@ -154,9 +155,28 @@ export class BertAnimator {
 		this.emit();
 	}
 
+	isAnimationEnabled(): boolean {
+		return this.animationEnabled;
+	}
+
+	/**
+	 * Enable or disable the per-tick mouth animation. When disabled, every mode
+	 * renders its static mouth and the animator only emits on mode/state
+	 * changes, so renderers that re-transmit Kitty images for every changed
+	 * image line (e.g. pi's main-screen renderer) are not forced to delete and
+	 * re-upload a sprite every frame tick.
+	 */
+	setAnimationEnabled(enabled: boolean): void {
+		if (this.animationEnabled === enabled) return;
+		this.animationEnabled = enabled;
+		this.mouthIndex = 0;
+		this.emit();
+	}
+
 	snapshot(now = Date.now()): BertSnapshot {
 		const visual = selectVisual(this.state, now);
-		const mouth = visual.animated ? MOUTH_CYCLE[this.mouthIndex % MOUTH_CYCLE.length]! : visual.staticMouth;
+		const animated = visual.animated && this.animationEnabled;
+		const mouth = animated ? MOUTH_CYCLE[this.mouthIndex % MOUTH_CYCLE.length]! : visual.staticMouth;
 		return { ...visual, mouth };
 	}
 
@@ -213,10 +233,11 @@ export class BertAnimator {
 	private tick(): void {
 		const visual = selectVisual(this.state, Date.now());
 		const modeChanged = visual.mode !== this.lastMode;
+		const animated = visual.animated && this.animationEnabled;
 		if (modeChanged) this.mouthIndex = 0;
-		else if (visual.animated) this.mouthIndex++;
+		else if (animated) this.mouthIndex++;
 
-		if (modeChanged || visual.animated) this.emit();
+		if (modeChanged || animated) this.emit();
 	}
 
 	private emit(): void {

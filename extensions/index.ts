@@ -39,6 +39,20 @@ function loadFrames(): FrameMap {
 	return frames;
 }
 
+type BertAnimateSetting = "auto" | "on" | "off";
+const ANIMATE_SETTINGS: readonly BertAnimateSetting[] = ["auto", "on", "off"];
+
+/**
+ * Detects pi's fullscreen (alternate-screen) renderer through the TUI proxy.
+ * The proxy forwards property reads to the active renderer, and only
+ * TuiAltScreen declares the `altScreenActive` field, so this tracks runtime
+ * renderer switches as well.
+ */
+function isAltScreenRenderer(tui: TUI | undefined): boolean {
+	if (!tui) return false;
+	return typeof (tui as unknown as Record<string, unknown>).altScreenActive === "boolean";
+}
+
 function centerLine(text: string, width: number): string {
 	const clipped = truncateToWidth(text, Math.max(1, width));
 	return `${" ".repeat(Math.max(0, Math.floor((width - visibleWidth(clipped)) / 2)))}${clipped}`;
@@ -62,12 +76,21 @@ class BertComponent implements Component {
 		private readonly animator: BertAnimator,
 		private readonly frames: FrameMap,
 		private readonly fallbackWidget: boolean,
+		private readonly shouldAnimate: () => boolean,
 	) {
 		this.unsubscribe = animator.subscribe(() => this.tui.requestRender());
 	}
 
 	render(width: number): string[] {
 		if (!this.animator.isEnabled()) return [];
+		// Sync per render: keeps the animator in the right mode across runtime
+		// fullscreen switches and widget/overlay recreation. Pi's main-screen
+		// renderer deletes the image data of every kitty id found in a changed
+		// line, so per-tick animation there means delete + re-upload at 7 Hz;
+		// in that renderer Bert only changes frames on actual state changes.
+		// setAnimationEnabled no-ops when the value is unchanged, so this does
+		// not cause render loops.
+		this.animator.setAnimationEnabled(this.shouldAnimate());
 		// The widget slot width is only a fraction of the terminal (other
 		// extensions share the row above the editor), so compare against the real
 		// terminal width: on wide terminals the top-right overlay shows Bert and
@@ -126,6 +149,10 @@ export default function bertExtension(pi: ExtensionAPI): void {
 	let overlayHandle: OverlayHandle | undefined;
 	let overlayComponent: BertComponent | undefined;
 	let tui: TUI | undefined;
+	let animateSetting: BertAnimateSetting = "auto";
+
+	const shouldAnimate = (): boolean =>
+		animateSetting === "on" || (animateSetting === "auto" && isAltScreenRenderer(tui));
 
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
@@ -144,7 +171,7 @@ export default function bertExtension(pi: ExtensionAPI): void {
 			WIDGET_KEY,
 			(componentTui, theme) => {
 				tui = componentTui;
-				overlayComponent = new BertComponent(componentTui, theme, animator!, frames, false);
+				overlayComponent = new BertComponent(componentTui, theme, animator!, frames, false, shouldAnimate);
 				overlayHandle = componentTui.showOverlay(overlayComponent, {
 					anchor: "top-right",
 					width: OVERLAY_WIDTH,
@@ -154,7 +181,7 @@ export default function bertExtension(pi: ExtensionAPI): void {
 					visible: (terminalWidth) => terminalWidth >= OVERLAY_BREAKPOINT && (animator?.isEnabled() ?? false),
 					nonCapturing: true,
 				});
-				return new BertComponent(componentTui, theme, animator!, frames, true);
+				return new BertComponent(componentTui, theme, animator!, frames, true, shouldAnimate);
 			},
 			{ placement: "aboveEditor" },
 		);
@@ -185,7 +212,7 @@ export default function bertExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("bert", {
-		description: "Control Bert: /bert [on|off|test <state>]",
+		description: "Control Bert: /bert [on|off|animate <auto|on|off>|test <state>]",
 		handler: async (args, ctx) => {
 			if (ctx.mode !== "tui" || !animator) {
 				ctx.ui.notify("Bert is only available in interactive TUI mode.", "warning");
@@ -207,6 +234,21 @@ export default function bertExtension(pi: ExtensionAPI): void {
 				ctx.ui.notify("Bert is hidden. Use /bert on to bring him back.", "info");
 				return;
 			}
+			if (command === "animate") {
+				const value = requestedMode as BertAnimateSetting | undefined;
+				if (value && ANIMATE_SETTINGS.includes(value)) {
+					animateSetting = value;
+					animator.setAnimationEnabled(shouldAnimate());
+					tui?.requestRender();
+					ctx.ui.notify(
+						`Bert animation: ${value}${value === "auto" ? ` (currently ${shouldAnimate() ? "animating" : "static"} in this renderer)` : ""}.`,
+						"info",
+					);
+					return;
+				}
+				ctx.ui.notify(`Usage: /bert animate [${ANIMATE_SETTINGS.join("|")}] (currently: ${animateSetting})`, "error");
+				return;
+			}
 			if (command === "test" && requestedMode && MODES.includes(requestedMode as BertMode)) {
 				animator.preview(requestedMode as BertMode);
 				ctx.ui.notify(`Previewing Bert's ${requestedMode} state for 5 seconds.`, "info");
@@ -218,7 +260,10 @@ export default function bertExtension(pi: ExtensionAPI): void {
 			}
 
 			const snapshot = animator.snapshot();
-			ctx.ui.notify(`Bert is ${animator.isEnabled() ? "visible" : "hidden"} (${snapshot.mode}).`, "info");
+			ctx.ui.notify(
+				`Bert is ${animator.isEnabled() ? "visible" : "hidden"} (${snapshot.mode}), animation ${animator.isAnimationEnabled() ? "on" : "off"} [${animateSetting}].`,
+				"info",
+			);
 		},
 	});
 }

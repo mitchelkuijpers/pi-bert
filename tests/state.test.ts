@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	BertAnimator,
 	DONE_HOLD_MS,
 	ERROR_HOLD_MS,
 	LONG_OPERATION_MS,
@@ -71,4 +72,54 @@ test("preview has the highest priority", () => {
 	state.preview = { mode: "done", until: now + 1_000 };
 	assert.equal(selectVisual(state, now).mode, "done");
 	assert.equal(selectVisual(state, now + 1_000).mode, "error");
+});
+
+test("animator animates the mouth cycle for animated modes", () => {
+	const animator = new BertAnimator();
+	animator.startAgent(1_000);
+	const first = animator.snapshot(1_000).mouth;
+	animator["mouthIndex"] = 3;
+	const later = animator.snapshot(1_000).mouth;
+	assert.notEqual(first, later);
+	assert.equal(animator.snapshot(1_000).mode, "thinking");
+	animator.stop();
+});
+
+test("disabling animation pins the static mouth even for animated modes", () => {
+	const animator = new BertAnimator();
+	animator.startAgent(1_000);
+	animator.setAnimationEnabled(false);
+	animator["mouthIndex"] = 3;
+	assert.equal(animator.snapshot(1_000).mode, "thinking");
+	assert.equal(animator.snapshot(1_000).mouth, "closed");
+	animator.stop();
+});
+
+test("disabling animation stops emitting on ticks but still emits on mode changes", () => {
+	const animator = new BertAnimator();
+	let emits = 0;
+	animator.subscribe(() => emits++);
+	animator.setAnimationEnabled(false);
+	emits = 0;
+	animator.startAgent(1_000);
+	assert.equal(emits, 1); // the state change itself emits
+	emits = 0;
+	animator["tick"]();
+	assert.equal(emits, 0); // no per-tick emission while animation is off
+	animator.settleAgent(2_000);
+	assert.equal(emits, 1); // mode change still notifies
+	animator.stop();
+});
+
+test("setAnimationEnabled is a no-op when the value is unchanged", () => {
+	const animator = new BertAnimator();
+	let emits = 0;
+	animator.subscribe(() => emits++);
+	animator.setAnimationEnabled(true);
+	assert.equal(emits, 0);
+	animator.setAnimationEnabled(false);
+	assert.equal(emits, 1);
+	animator.setAnimationEnabled(false);
+	assert.equal(emits, 1);
+	animator.stop();
 });

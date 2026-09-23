@@ -59,6 +59,9 @@ While developing an installed local package, use `/reload` after changing the ex
 /bert                       Show Bert's current state
 /bert on                    Show Bert
 /bert off                   Hide Bert
+/bert animate auto          Animate only in fullscreen mode (default)
+/bert animate on            Always animate the talking mouth
+/bert animate off           Never animate the talking mouth
 /bert test idle             Preview idle for five seconds
 /bert test thinking         Preview thinking for five seconds
 /bert test tool             Preview tool use for five seconds
@@ -68,6 +71,19 @@ While developing an installed local package, use `/reload` after changing the ex
 /bert test waiting          Preview waiting for five seconds
 /bert test compacting       Preview compaction for five seconds
 ```
+
+## Animation and renderers
+
+Bert's talking mouth cycles sprites every 140 ms while the agent is busy.
+Pi's default (main-screen) renderer deletes and re-uploads the Kitty image
+data behind every changed image line, which shows up as flickering near (or
+behind) the editor in terminals such as Ghostty. To keep Bert stable there,
+the default `animate auto` setting only runs the mouth animation in pi's
+fullscreen (alternate-screen) mode, which re-caches image placements and
+handles animation cheaply. In the main-screen mode Bert still switches pose,
+mouth, and caption on every state change; the frame just doesn't cycle per
+tick. Use `/bert animate on` to force animation everywhere or `/bert animate
+off` to run static Bert everywhere.
 
 ## Sprite generation
 
