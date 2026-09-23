@@ -149,7 +149,7 @@ export default function bertExtension(pi: ExtensionAPI): void {
 	let overlayHandle: OverlayHandle | undefined;
 	let overlayComponent: BertComponent | undefined;
 	let tui: TUI | undefined;
-	let animateSetting: BertAnimateSetting = "on";
+	let animateSetting: BertAnimateSetting = "auto";
 
 	const shouldAnimate = (): boolean =>
 		animateSetting === "on" || (animateSetting === "auto" && isAltScreenRenderer(tui));

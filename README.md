@@ -59,8 +59,8 @@ While developing an installed local package, use `/reload` after changing the ex
 /bert                       Show Bert's current state
 /bert on                    Show Bert
 /bert off                   Hide Bert
-/bert animate on            Always animate the talking mouth (default)
-/bert animate auto          Animate only in fullscreen mode
+/bert animate auto          Animate only in fullscreen mode (default)
+/bert animate on            Always animate the talking mouth
 /bert animate off           Never animate the talking mouth
 /bert test idle             Preview idle for five seconds
 /bert test thinking         Preview thinking for five seconds
@@ -75,15 +75,14 @@ While developing an installed local package, use `/reload` after changing the ex
 ## Animation and renderers
 
 Bert's talking mouth cycles sprites every 140 ms while the agent is busy,
-and animation is on by default (`animate on`). Pi's default (main-screen)
-renderer deletes and re-uploads the Kitty image data behind every changed
-image line, which can show up as flickering near (or behind) the editor in
-terminals such as Ghostty. If that bothers you, `/bert animate auto` only
-runs the mouth animation in pi's fullscreen (alternate-screen) mode, which
-re-caches image placements and handles animation cheaply; in the
-main-screen mode Bert then still switches pose, mouth, and caption on every
-state change, the frame just doesn't cycle per tick. `/bert animate off`
-runs static Bert everywhere.
+and by default (`animate auto`) it only runs in pi's fullscreen
+(alternate-screen) mode, which re-caches image placements and handles
+animation cheaply. Pi's default (main-screen) renderer deletes and
+re-uploads the Kitty image data behind every changed image line, which
+shows up as flickering near (or behind) the editor in terminals such as
+Ghostty; there Bert still switches pose, mouth, and caption on every state
+change, the frame just doesn't cycle per tick. Use `/bert animate on` to
+force animation everywhere or `/bert animate off` for fully static Bert.
 
 ## Sprite generation
 
