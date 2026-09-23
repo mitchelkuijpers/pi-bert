@@ -27,13 +27,17 @@ mouths=(closed wide-open rounded tucked-lip smile)
 for row in "${!poses[@]}"; do
   for column in "${!mouths[@]}"; do
     output="$out_dir/${poses[$row]}-${mouths[$column]}.png"
+    # 256-color palette (with default error-diffusion dithering) cuts each
+    # frame from ~87 KB to ~19 KB with no visible difference at the 20x7 cell
+    # display size, which keeps Kitty image re-uploads cheap in terminals.
     magick "$source_image" \
       -crop "512x326+${xs[$column]}+${ys[$row]}" \
       +repage \
       -resize "320x204" \
       -strip \
       -define png:compression-level=9 \
-      "$output"
+      -colors 256 \
+      "png8:$output"
   done
 done
 
